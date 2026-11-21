@@ -1,0 +1,6 @@
+bin/
+obj/
+dist/
+web/node_modules/
+src/Jotter/wwwroot/
+nuget.config

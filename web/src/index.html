@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Jotter</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="hljs.css">
+</head>
+<body>
+  <div id="app">
+    <div id="tabbar">
+      <div id="tabs" role="tablist"></div>
+      <button id="new-tab" class="icon-btn" title="新建标签 (Ctrl+N)">+</button>
+      <div id="tabbar-space"></div>
+      <button id="menu-btn" class="icon-btn" title="菜单">⋯</button>
+    </div>
+    <div id="banner" hidden>
+      <span id="banner-text"></span>
+      <span id="banner-actions"></span>
+    </div>
+    <div id="main">
+      <div id="editor"></div>
+      <div id="divider" title="拖动调整宽度"></div>
+      <div id="preview" class="markdown-body"></div>
+    </div>
+    <div id="statusbar">
+      <span id="st-pos"></span>
+      <span id="st-count"></span>
+      <span class="grow"></span>
+      <button id="st-zoom" class="st-btn" title="字号（Ctrl+= / Ctrl+- / Ctrl+0）"></button>
+      <button id="st-eol" class="st-btn" title="换行符，点击切换"></button>
+      <button id="st-enc" class="st-btn" title="编码，点击更改"></button>
+      <button id="st-preview" class="st-btn" title="切换预览 (Ctrl+\)">预览</button>
+    </div>
+  </div>
+  <div id="modal-root"></div>
+  <div id="toast-root"></div>
+  <script type="module" src="main.js"></script>
+</body>
+</html>

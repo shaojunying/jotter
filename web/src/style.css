@@ -1,0 +1,476 @@
+/*
+ * Jotter UI.
+ * Shapes and materials follow Apple's Liquid Glass language (iOS / macOS 27):
+ *   - content sits on rounded cards floating on a darker window canvas;
+ *   - corners are concentric: inner radius = outer radius - padding;
+ *   - controls are capsules; floating layers are frosted glass with a
+ *     darker edge and a bright specular line on top.
+ * Code and syntax colours stay on VS Code's Dark Modern palette.
+ */
+:root {
+  --ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  --mono: Consolas, "Cascadia Mono", "Microsoft YaHei UI", monospace;
+  --preview-size: 14px;
+
+  --canvas: #161618;            /* window background, toolbar, status bar */
+  --card: #1f1f1f;              /* editor and preview cards (VS Code editor bg) */
+  --fg: #d4d4d4;
+  --strong: #f5f5f7;
+  --muted: #98989f;
+  --accent: #0a84ff;            /* Apple system blue (dark) */
+  --link: #4daafc;
+  --sep: rgba(255, 255, 255, 0.08);
+  --fill: rgba(120, 120, 128, 0.24);
+  --fill-hover: rgba(120, 120, 128, 0.34);
+  --fill-press: rgba(120, 120, 128, 0.44);
+  --code-bg: rgba(120, 120, 128, 0.16);
+
+  --glass: rgba(40, 40, 43, 0.72);
+  --glass-strong: rgba(44, 44, 47, 0.9);
+  --glass-blur: blur(28px) saturate(180%);
+  /* darker outer edge + bright specular line on top (Liquid Glass, 27) */
+  --glass-edge: 0 0 0 0.5px rgba(0, 0, 0, 0.7), inset 0 0.5px 0 rgba(255, 255, 255, 0.22),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.07);
+  --float-shadow: 0 12px 40px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+
+  --r-card: 14px;
+  --r-menu: 14px;
+  --r-dialog: 26px;
+  --gap: 8px;
+  --spring: cubic-bezier(0.2, 0.9, 0.3, 1.15);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+/* Capsule scrollbars, no arrows */
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(160, 160, 168, 0.32);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: rgba(180, 180, 188, 0.5); }
+::-webkit-scrollbar-button { display: none; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--canvas);
+  color: var(--fg);
+  font: 13px/1.4 var(--ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+body:not(.ready) #app { visibility: hidden; }
+body.resizing, body.resizing * { cursor: col-resize !important; user-select: none; }
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: default;
+}
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------------- toolbar with capsule tabs ---------------- */
+
+#tabbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 42px;
+  flex: none;
+  padding: 0 var(--gap) 0 calc(var(--gap) + 2px);
+  background: var(--canvas);
+  user-select: none;
+}
+
+#tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+#tabs::-webkit-scrollbar { display: none; }
+
+.tab {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 30px;
+  min-width: 96px;
+  max-width: 220px;
+  padding: 0 5px 0 14px;
+  border-radius: 15px;
+  color: var(--muted);
+  transition: background-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.tab:hover { background: rgba(120, 120, 128, 0.14); color: var(--fg); }
+.tab.active {
+  background: var(--fill);
+  color: var(--strong);
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.5);
+}
+.tab.drop-before { box-shadow: inset 3px 0 0 var(--accent); }
+.tab.drop-after { box-shadow: inset -3px 0 0 var(--accent); }
+
+.tab-label {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* concentric: tab radius 15 - padding 5 = 10 */
+.tab-close {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  padding: 0;
+  line-height: 20px;
+  font-size: 15px;
+  color: inherit;
+  opacity: 0;
+  transition: opacity 0.12s, background-color 0.12s;
+}
+.tab-close::before { content: "×"; }
+.tab:hover .tab-close, .tab.active .tab-close { opacity: 0.7; }
+.tab-close:hover { background: var(--fill-hover); opacity: 1 !important; }
+.tab.dirty .tab-close { opacity: 0.9; }
+.tab.dirty .tab-close::before { content: "●"; font-size: 9px; }
+.tab.dirty .tab-close:hover::before { content: "×"; font-size: 15px; }
+
+.icon-btn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 15px;
+  background: transparent;
+  font-size: 18px;
+  line-height: 30px;
+  padding: 0;
+  color: var(--muted);
+  transition: background-color 0.15s, color 0.15s;
+}
+.icon-btn:hover { background: var(--fill); color: var(--strong); }
+.icon-btn:active { background: var(--fill-press); }
+#tabbar-space { flex: 1; align-self: stretch; }
+
+/* ---------------- banner (glass card) ---------------- */
+
+#banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  margin: 0 var(--gap) var(--gap);
+  padding: 7px 8px 7px 16px;
+  border-radius: var(--r-card);
+  background: rgba(255, 159, 10, 0.14);
+  box-shadow: 0 0 0 0.5px rgba(255, 159, 10, 0.4), inset 0 0.5px 0 rgba(255, 255, 255, 0.12);
+  color: #ffd38a;
+  animation: pop-in 0.28s var(--spring);
+}
+#banner[hidden] { display: none; }
+#banner-text { flex: 1; }
+#banner-actions { display: flex; gap: 6px; }
+
+/* capsule buttons (banner + dialogs) */
+.pill, #banner button, .modal-buttons button {
+  height: 30px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 15px;
+  background: var(--fill);
+  color: var(--strong);
+  transition: background-color 0.15s, transform 0.1s;
+}
+#banner button:hover, .modal-buttons button:hover { background: var(--fill-hover); }
+#banner button:active, .modal-buttons button:active { transform: scale(0.97); background: var(--fill-press); }
+
+/* ---------------- editor + preview cards ---------------- */
+
+#main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  padding: 0 var(--gap);
+}
+
+#editor, #preview {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--r-card);
+  background: var(--card);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.6), inset 0 0 0 0.5px rgba(255, 255, 255, 0.06),
+    0 1px 3px rgba(0, 0, 0, 0.25);
+}
+#editor { flex: 0 0 100%; }
+#editor .cm-editor { height: 100%; }
+
+#divider, #preview { display: none; }
+#main.with-preview #divider {
+  position: relative;
+  display: block;
+  flex: none;
+  width: var(--gap);
+  cursor: col-resize;
+}
+/* capsule grabber, shown on hover */
+#main.with-preview #divider::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 40px;
+  border-radius: 2px;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.18);
+  opacity: 0;
+  transition: opacity 0.15s, height 0.2s var(--spring), background-color 0.15s;
+}
+#main.with-preview #divider:hover::after { opacity: 1; height: 56px; }
+body.resizing #divider::after { opacity: 1 !important; background: var(--accent) !important; }
+#main.with-preview #preview {
+  display: block;
+  flex: 1 1 0;
+  overflow-y: auto;
+}
+
+/* ---------------- status bar ---------------- */
+
+#statusbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  flex: none;
+  padding: 0 calc(var(--gap) + 2px) 0 calc(var(--gap) + 10px);
+  background: var(--canvas);
+  color: var(--muted);
+  font-size: 12px;
+  user-select: none;
+}
+#statusbar > span { padding-right: 16px; }
+#statusbar .grow { flex: 1; }
+.st-btn {
+  height: 22px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  transition: background-color 0.15s, color 0.15s;
+}
+.st-btn:hover { background: var(--fill); color: var(--strong); }
+.st-btn[hidden] { display: none; }
+#st-preview.on { background: rgba(10, 132, 255, 0.18); color: #6cb6ff; }
+#st-preview.on:hover { background: rgba(10, 132, 255, 0.28); }
+
+/* ---------------- floating glass: menus, dialogs, toasts ---------------- */
+
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* concentric: menu radius 14 - padding 6 = item radius 8 */
+.menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 232px;
+  padding: 6px;
+  border-radius: var(--r-menu);
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-edge), var(--float-shadow);
+  transform-origin: top right;
+  animation: pop-in 0.22s var(--spring);
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 30px;
+  padding: 0 12px 0 4px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--strong);
+  text-align: left;
+}
+.menu-item:hover { background: var(--accent); color: #ffffff; }
+.menu-item:hover .menu-key, .menu-item:hover .menu-check { color: #ffffff; }
+.menu-check { width: 22px; color: var(--accent); text-align: center; font-weight: 600; }
+.menu-label { flex: 1; white-space: nowrap; }
+.menu-key { color: var(--muted); font-size: 12px; margin-left: 24px; }
+.menu-sep { height: 0.5px; margin: 5px 10px; background: rgba(255, 255, 255, 0.14); }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 16vh;
+  background: rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(3px);
+  animation: fade-in 0.18s ease-out;
+}
+/* concentric: dialog radius 26 - padding 22 = 4, so buttons stay capsules */
+.modal {
+  min-width: 360px;
+  max-width: 560px;
+  padding: 22px;
+  border-radius: var(--r-dialog);
+  background: var(--glass-strong);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-edge), var(--float-shadow);
+  animation: pop-in 0.3s var(--spring);
+}
+.modal-msg { font-size: 15px; font-weight: 600; color: var(--strong); margin-bottom: 6px; }
+.modal-detail { color: var(--muted); white-space: pre-wrap; line-height: 1.75; }
+.modal-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.modal-buttons button { min-width: 84px; height: 32px; border-radius: 16px; }
+.modal-buttons button.primary { background: var(--accent); color: #ffffff; font-weight: 600; }
+.modal-buttons button.primary:hover { background: #2b95ff; }
+
+#toast-root {
+  position: fixed;
+  left: 50%;
+  bottom: 44px;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.toast {
+  max-width: 520px;
+  padding: 9px 18px;
+  border-radius: 999px;
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-edge), var(--float-shadow);
+  color: var(--strong);
+  animation: pop-in 0.3s var(--spring);
+  transition: opacity 0.4s, transform 0.4s;
+}
+.toast.fade { opacity: 0; transform: translateY(6px) scale(0.98); }
+
+/* ---------------- Markdown preview ---------------- */
+
+.markdown-body {
+  padding: 14px 24px 40vh;
+  font-family: var(--ui);
+  font-size: var(--preview-size);
+  line-height: 1.55;
+  word-wrap: break-word;
+}
+.markdown-body > :first-child { margin-top: 0; }
+.markdown-body h1, .markdown-body h2, .markdown-body h3,
+.markdown-body h4, .markdown-body h5, .markdown-body h6 {
+  margin: 1.15em 0 0.45em;
+  line-height: 1.25;
+  font-weight: 650;
+  color: var(--strong);
+}
+.markdown-body h1 { font-size: 1.65em; letter-spacing: -0.01em; }
+.markdown-body h2 { font-size: 1.32em; }
+.markdown-body h3 { font-size: 1.12em; }
+.markdown-body h4 { font-size: 1em; }
+.markdown-body p, .markdown-body ul, .markdown-body ol,
+.markdown-body blockquote, .markdown-body pre, .markdown-body table { margin: 0 0 0.75em; }
+.markdown-body ul, .markdown-body ol { padding-left: 1.8em; }
+.markdown-body li + li { margin-top: 0.12em; }
+.markdown-body a { color: var(--link); text-decoration: none; }
+.markdown-body a:hover { text-decoration: underline; }
+.markdown-body blockquote {
+  position: relative;
+  padding: 8px 14px 8px 18px;
+  border-radius: 12px;
+  background: var(--code-bg);
+  color: var(--muted);
+}
+.markdown-body blockquote::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.8;
+}
+.markdown-body blockquote > :last-child { margin-bottom: 0; }
+.markdown-body code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  padding: 0.15em 0.45em;
+  border-radius: 6px;
+  background: var(--code-bg);
+  color: #d7ba7d;
+}
+/* concentric with the card: 14 - (margin-free) -> 12 */
+.markdown-body pre {
+  padding: 12px 14px;
+  overflow-x: auto;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.28);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.06);
+  line-height: 1.5;
+}
+.markdown-body pre code { padding: 0; background: none; color: inherit; font-size: 0.86em; }
+.markdown-body pre code.hljs { padding: 0; background: none; }
+.markdown-body .hljs { background: transparent; }
+.markdown-body table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+}
+.markdown-body th, .markdown-body td { padding: 6px 14px; border-bottom: 0.5px solid var(--sep); }
+.markdown-body th + th, .markdown-body td + td { border-left: 0.5px solid var(--sep); }
+.markdown-body tr:last-child td { border-bottom: none; }
+.markdown-body th { font-weight: 600; background: var(--code-bg); color: var(--strong); text-align: left; }
+.markdown-body hr { height: 0.5px; border: none; background: rgba(255, 255, 255, 0.16); margin: 1.2em 0; }
+.markdown-body img { max-width: 100%; border-radius: 10px; }
+.markdown-body .task-list-item { list-style: none; }
+.markdown-body .task-list-item input {
+  margin: 0 0.45em 0 -1.45em;
+  vertical-align: middle;
+  accent-color: var(--accent);
+}
+.markdown-body .contains-task-list { padding-left: 1.6em; }
