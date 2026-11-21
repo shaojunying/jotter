@@ -860,6 +860,8 @@ window.addEventListener('keydown', e => {
   else if (ctrl && k === '-') zoom(-1);
   else if (ctrl && k === '0') zoom(0);
   else if (alt && !ctrl && k === 'z') toggleSetting('wrap');
+  // The editor handles Ctrl+F / Ctrl+H itself; this covers focus elsewhere (preview, tab bar).
+  else if (ctrl && !shift && (k === 'f' || k === 'h') && !view.hasFocus) openSearchPanel(view);
   else handled = false;
   if (handled) { e.preventDefault(); e.stopPropagation(); }
 }, true);
